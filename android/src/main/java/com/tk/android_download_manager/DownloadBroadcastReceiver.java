@@ -16,6 +16,7 @@ import io.flutter.plugin.common.EventChannel;
 public class DownloadBroadcastReceiver extends BroadcastReceiver implements EventChannel.StreamHandler {
     private final Context context;
     private EventChannel.EventSink events;
+    private boolean isReceiverRegistered = false;
 
     public DownloadBroadcastReceiver(Context context) {
         this.context = context;
@@ -23,35 +24,53 @@ public class DownloadBroadcastReceiver extends BroadcastReceiver implements Even
 
     @Override
     public void onReceive(Context context, Intent intent) {
+        if (events == null || intent.getAction() == null) return;
+
+        long downloadId = intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1);
+        if (downloadId == -1) return;
+
+        Map<String, String> result = new HashMap<>();
+        result.put("id", String.valueOf(downloadId));
+
+        switch (intent.getAction()) {
+            case DownloadManager.ACTION_DOWNLOAD_COMPLETE:
+                result.put("action", String.valueOf(DownloadAction.Downloaded.ordinal()));
+                break;
+            case DownloadManager.ACTION_NOTIFICATION_CLICKED:
+                result.put("action", String.valueOf(DownloadAction.NotificationClicked.ordinal()));
+                break;
+            default:
+                return;
+        }
+
         if (events != null) {
-            if (intent.getAction() != null) {
-                if (intent.getAction().equals(DownloadManager.ACTION_DOWNLOAD_COMPLETE)) {
-                    Map<String, String> result = new HashMap<>();
-                    long downloadId = intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, 0L);
-                    result.put("id", String.valueOf(downloadId));
-                    result.put("action", String.valueOf(DownloadAction.Downloaded.ordinal()));
-                    events.success(result);
-                }
-                if (intent.getAction().equals(DownloadManager.ACTION_NOTIFICATION_CLICKED)) {
-                    Map<String, String> result = new HashMap<>();
-                    long downloadId = intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, 0L);
-                    result.put("id", String.valueOf(downloadId));
-                    result.put("action", String.valueOf(DownloadAction.NotificationClicked.ordinal()));
-                    events.success(result);
-                }
-            }
+            events.success(result);
         }
     }
 
     @Override
     public void onListen(Object arguments, EventChannel.EventSink events) {
         this.events = events;
-        context.registerReceiver(this, new IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE));
-        context.registerReceiver(this, new IntentFilter(DownloadManager.ACTION_NOTIFICATION_CLICKED));
+
+        if (!isReceiverRegistered) {
+            IntentFilter filter = new IntentFilter();
+            filter.addAction(DownloadManager.ACTION_DOWNLOAD_COMPLETE);
+            filter.addAction(DownloadManager.ACTION_NOTIFICATION_CLICKED);
+            context.registerReceiver(this, filter);
+            isReceiverRegistered = true;
+        }
     }
 
     @Override
     public void onCancel(Object arguments) {
-        context.unregisterReceiver(this);
+        if (isReceiverRegistered) {
+            try {
+                context.unregisterReceiver(this);
+                isReceiverRegistered = false;
+            } catch (IllegalArgumentException e) {
+                // Receiver was not registered, ignore
+            }
+        }
+        this.events = null;
     }
 }
