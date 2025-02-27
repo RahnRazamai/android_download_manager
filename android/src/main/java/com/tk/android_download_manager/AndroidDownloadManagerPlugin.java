@@ -12,64 +12,66 @@ import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding;
 import io.flutter.plugin.common.BinaryMessenger;
 import io.flutter.plugin.common.EventChannel;
 import io.flutter.plugin.common.MethodChannel;
-import io.flutter.plugin.common.PluginRegistry;
 
 public class AndroidDownloadManagerPlugin implements FlutterPlugin, ActivityAware {
     private MethodChannel methodChannel;
-    private Activity activity;
     private EventChannel eventChannel;
+    private Activity activity;
+    private Context context;
 
-    @Deprecated
-    public static void registerWith(PluginRegistry.Registrar registrar) {
-        AndroidDownloadManagerPlugin plugin = new AndroidDownloadManagerPlugin();
-        plugin.setupChannels(registrar.messenger(), registrar.context(), registrar.activity());
+    @Override
+    public void onAttachedToEngine(@NonNull FlutterPluginBinding binding) {
+        this.context = binding.getApplicationContext();
+        setupChannels(binding.getBinaryMessenger(), this.context);
     }
 
-    private void setupChannels(BinaryMessenger messenger, Context context, Activity activity) {
+    private void setupChannels(BinaryMessenger messenger, Context context) {
         methodChannel = new MethodChannel(messenger, "download_manager");
         eventChannel = new EventChannel(messenger, "download_manager/complete");
+        
         DownloadManager manager = (DownloadManager) context.getSystemService(Context.DOWNLOAD_SERVICE);
         DownloadMethodChannelHandler downloadMethodChannelHandler = new DownloadMethodChannelHandler(context, manager, activity);
         DownloadBroadcastReceiver receiver = new DownloadBroadcastReceiver(context);
+        
         methodChannel.setMethodCallHandler(downloadMethodChannelHandler);
         eventChannel.setStreamHandler(receiver);
     }
 
     private void teardownChannels() {
-        methodChannel.setMethodCallHandler(null);
-        eventChannel.setStreamHandler(null);
-        methodChannel = null;
-        eventChannel = null;
-    }
-
-    @Override
-    public void onAttachedToEngine(@NonNull FlutterPluginBinding binding) {
-        setupChannels(binding.getBinaryMessenger(), binding.getApplicationContext(), this.activity);
+        if (methodChannel != null) {
+            methodChannel.setMethodCallHandler(null);
+            methodChannel = null;
+        }
+        if (eventChannel != null) {
+            eventChannel.setStreamHandler(null);
+            eventChannel = null;
+        }
     }
 
     @Override
     public void onDetachedFromEngine(@NonNull FlutterPluginBinding binding) {
-        methodChannel.setMethodCallHandler(null);
         teardownChannels();
+        context = null;
     }
 
+    // ActivityAware methods
     @Override
     public void onAttachedToActivity(@NonNull ActivityPluginBinding binding) {
-        activity = binding.getActivity();
+        this.activity = binding.getActivity();
     }
 
     @Override
     public void onDetachedFromActivityForConfigChanges() {
-        activity = null;
+        this.activity = null;
     }
 
     @Override
     public void onReattachedToActivityForConfigChanges(@NonNull ActivityPluginBinding binding) {
-        activity = binding.getActivity();
+        this.activity = binding.getActivity();
     }
 
     @Override
     public void onDetachedFromActivity() {
-        activity = null;
+        this.activity = null;
     }
 }
